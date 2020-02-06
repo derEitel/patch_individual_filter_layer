@@ -1,3 +1,7 @@
+import torch
+from torch.nn.modules.module import Module
+
+
 class PatchIndividualFilters3D(Module):
     """Layer that splits incoming tensor in sub-parts (patches) applying convolutions patch-wise. Reassembles output.
 
@@ -26,6 +30,12 @@ class PatchIndividualFilters3D(Module):
     reassemble
         Flag indicating the reassembly of the patches. During forward process, incoming tensor will be split in patches.
         If `reassemble` is false output will be a 6D tensor.
+    overlap
+        Flag indicating whether to create an additional set of patches 
+        that are shifted by half the patch size per dimension. This way 
+        border regions of the original patches become central in the new
+        set. Increases the amount of filters more than two-fold.
+        Resulting feature maps are added along the channel dimension.
     debug
         Prints additional information, including tensor dimensions after each tensor operation during forwarding.
 
@@ -39,6 +49,7 @@ class PatchIndividualFilters3D(Module):
                  conv_padding=0,
                  conv_stride=1,
                  reassemble=True,
+                 overlap=0,
                  debug=0):
         super(PatchIndividualFilters3D, self).__init__()
         self.input_dim = input_dim  # expects it to be a 3D tensor
@@ -48,17 +59,21 @@ class PatchIndividualFilters3D(Module):
         self.num_local_filter_in = num_local_filter_in
         self.conv_padding = conv_padding
         self.conv_stride = conv_stride
+        self.overlap = overlap
 
         # calc padding and num_patches
         self.padding_dim = [0] * len(self.input_dim) * 2
+        # create 2nd padding dims when using overlapped patches
+        if self.overlap > 0:
+            self.padding_dim *= 2
 
         # initialize all local convolution operations
-        self.num_patches, self.num_patches_per_dim = self.calc_pad_dim_num_patches()
+        self.num_patches, self.num_patches_per_dim = self.calc_pad_dim_num_patches(overlap)
 
         # initialize for each patch a convolution operation
         for patch in range(self.num_patches):
             self.add_module("conv_{}".format(patch),
-                            nn.Conv3d(self.num_local_filter_in,
+                            torch.nn.Conv3d(self.num_local_filter_in,
                                       self.num_local_filter_out,
                                       self.filter_shape,
                                       padding=self.conv_padding,
@@ -97,7 +112,7 @@ class PatchIndividualFilters3D(Module):
 
     def calc_pad_dim_num_patches(self):
         """Calculates the number of patches according to `patch_shape` and `input_shape`.
-
+        
         Returns
         -------
         int
@@ -109,6 +124,10 @@ class PatchIndividualFilters3D(Module):
         # Initalization
         num_patches = 1
         num_patches_per_dim = [0] * len(self.input_dim)
+        if self.overlap == 1:
+            # call this with size reduced by patchsize/2
+        elif self.overlap == 2:
+            # call this with size increased by patchsize/2
 
         # check how often patch_shape fits input_dim for each dimension
         for idx, dim in enumerate(self.patch_shape):
@@ -120,6 +139,12 @@ class PatchIndividualFilters3D(Module):
                 tmp_division += 1
             num_patches_per_dim[idx] = tmp_division
             num_patches = num_patches * tmp_division
+
+        print(num_patches)
+        print(num_patches_per_dim)
+
+
+
         return num_patches, num_patches_per_dim
 
     def pad_to_patch_size(self, input5d):
