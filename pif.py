@@ -642,8 +642,9 @@ class PatchIndividualFilters3DOverlap(Module):
                  conv_padding=0,
                  conv_stride=1,
                  reassemble=True,
+                 overlap=1,
                  debug=0):
-        super(PatchIndividualFilters3DOverlap, self).__init__()
+        super().__init__()
         self.input_dim = input_dim  # expects it to be a 3D tensor
         self.filter_shape = filter_shape
         self.patch_shape = patch_shape
@@ -651,6 +652,7 @@ class PatchIndividualFilters3DOverlap(Module):
         self.num_local_filter_in = num_local_filter_in
         self.conv_padding = conv_padding
         self.conv_stride = conv_stride
+        self.overlap = overlap
 
         # initialize
         self.padding_dim = [0] * len(self.input_dim) * 2
@@ -658,12 +660,13 @@ class PatchIndividualFilters3DOverlap(Module):
         # initialize all local convs with weight & co
         self.num_patches, self.num_patches_per_dim, self.padded_input_dim = self.calc_pad_dim_num_patches()
 
-        # overlap possible?
-        assert self.num_patches != 1,\
-            "Can not build overlap patches for input_shape: {} and patch_shape {}".format(self.input_dim,
-                                                                                          self.patch_shape)
+        if self.overlap:
+            # overlap possible?
+            assert self.num_patches != 1,\
+                "Can not build overlap patches for input_shape: {} and patch_shape {}".format(self.input_dim,
+                                                                                              self.patch_shape)
 
-        self.num_overlap_patches, self.num_overlap_patches_per_dim = self.calc_overlap_num_patches()
+            self.num_overlap_patches, self.num_overlap_patches_per_dim = self.calc_overlap_num_patches()
 
         # initialize convolutions
         for patch in range(self.num_patches):
@@ -675,15 +678,16 @@ class PatchIndividualFilters3DOverlap(Module):
                                       padding=self.conv_padding,
                                       stride=self.conv_stride))
 
-        # initialize convolutions for overlap patches
-        for patch in range(self.num_overlap_patches):
-            # initialize convolution object -
-            self.add_module("conv_ov_{}".format(patch),
-                            nn.Conv3d(self.num_local_filter_in,
-                                      self.num_local_filter_out,
-                                      self.filter_shape,
-                                      padding=self.conv_padding,
-                                      stride=self.conv_stride))
+        if self.overlap:
+            # initialize convolutions for overlap patches
+            for patch in range(self.num_overlap_patches):
+                # initialize convolution object -
+                self.add_module("conv_ov_{}".format(patch),
+                                nn.Conv3d(self.num_local_filter_in,
+                                          self.num_local_filter_out,
+                                          self.filter_shape,
+                                          padding=self.conv_padding,
+                                          stride=self.conv_stride))
 
         self.grads = {}
         self.reassemble_flag = reassemble
@@ -813,15 +817,15 @@ class PatchIndividualFilters3DOverlap(Module):
             if dim_val > self.patch_shape[dim_idx]:
                 # delete a patch from input for each dimension -> maximize overlap
                 tmp_remain = self.patch_shape[dim_idx] % 2
-                tmp_division = self.patch_shape[dim_idx] // 2  # always floors the result
+                tmp_division = self.patch_shape[dim_idx] # use full patch size as input is padded already
 
                 if tmp_remain:  # patch of odd size, no perfect overlap possible
-                    offset = [tmp_division, input_tensor.shape[dim_idx + 1] - tmp_division]  # add batch dim
-                else:
                     offset = [tmp_division, input_tensor.shape[dim_idx + 1] - tmp_division - 1]  # add batch dim
+                else:
+                    offset = [tmp_division, input_tensor.shape[dim_idx + 1] - tmp_division]  # add batch dim
 
                 # narrow input in "dim_idx + 1" dimension (added batch dimension)
-                input_tensor = torch.narrow(input_tensor, dim_idx + 1, offset[0], offset[1])
+                input_tensor = torch.narrow(input_tensor, dim_idx + 1, offset[0], offset[1] + tmp_remain) # add remain to ensure it matches the patch size again
         return input_tensor
 
     def reassemble(self, input6d, bs, tmp_num_patches_per_dim):
@@ -909,11 +913,29 @@ class PatchIndividualFilters3DOverlap(Module):
         # concat to get 6D tensor back
         return torch.cat(patch_out, dim=2)
 
-    def forward(self, input_tensor):
+    def merge_overlapped_output(self, og, ov):
+        # merge the overlapped output back in with the original
+        if ov.shape[-3:] != og.shape[-3:]:
+            # a smaller overlapped output needs to be padded
+            pad_len = np.flip(np.array(og.shape) - np.array(ov.shape))[:3] # pad only the spatial dimensions
+            pad_len_idv = []
+            # pad left and right the same amount unless its uneven
+            for idx, pad in enumerate(pad_len):
+                remain = pad % 2
+                pad = pad // 2
+                pad_len_idv.append(pad)
+                pad_len_idv.append(pad + remain)
+            ov = torch.nn.functional.pad(ov, tuple(pad_len_idv), mode='constant', value=0)
+        return torch.cat((og, ov), dim=1)
 
+    def forward(self, input_tensor):
         # set hook to save gradient in debug mode
         if self.debug:
             input_tensor.register_hook(self.save_grad("backward_out"))
+
+        assert np.all(self.input_dim == list(input_tensor.shape[-3:])),\
+                "Specified input_dim {} does not match actual input tensor shape in the spatial dimensions {}".format(self.input_dim,
+                                                                                              input_tensor.shape[-3:])
 
         # pad
         input_tensor = self.pad_to_patch_size(input_tensor)
@@ -921,26 +943,35 @@ class PatchIndividualFilters3DOverlap(Module):
         # switch dimensions
         input_tensor = torch.einsum("bcxyz->bxyzc", input_tensor)
 
-        # clone for building  overlap patches. NEW TENSOR CLONE! Backward flow is conserved!
-        input_ov = input_tensor.clone()
+        if self.overlap:
+            # clone for building  overlap patches. NEW TENSOR CLONE! Backward flow is conserved!
+            input_ov = input_tensor.clone()
+            # reshape for overlap, channel dimension most inner dimension, result is 6D
+            # NEW TENSOR CLONE! Backward flow is conserved!
+            input_ov = self.prepare_overlap_input(input_ov)
+            input_ov, _ = self.split_5d_channel_last(input_ov, self.num_overlap_patches_per_dim)
 
         # reshape, channel dimension most inner dimension, result is 6D
         input_tensor, bs = self.split_5d_channel_last(input_tensor, self.num_patches_per_dim)
 
-        # reshape for overlap, channel dimension most inner dimension, result is 6D
-        # NEW TENSOR CLONE! Backward flow is conserved!
-        input_ov = self.prepare_overlap_input(input_ov)
-        input_ov, _ = self.split_5d_channel_last(input_ov, self.num_overlap_patches_per_dim)
-
         # convolution patch wise
         disassembled_out = self.patch_wise_conv(input_tensor, self.num_patches)
-        disassembled_ov_out = self.patch_wise_conv(input_ov, self.num_overlap_patches, mode="ov")
+        if self.overlap:
+            disassembled_ov_out = self.patch_wise_conv(input_ov, self.num_overlap_patches, mode="ov")
 
         if self.reassemble_flag:
-            # return 5D tensor
+            # reassemeble and merge to 5D tensor
             r = self.reassemble(disassembled_out, bs, self.num_patches_per_dim)
-            r_ov = self.reassemble(disassembled_ov_out, bs, self.num_overlap_patches_per_dim)
-            return r, r_ov
-
-        # return 6D tensor
-        return disassembled_out, disassembled_ov_out
+            if self.overlap:
+                r_ov = self.reassemble(disassembled_ov_out, bs, self.num_overlap_patches_per_dim)
+                # pad ov and merge with non-overlapped
+                output = self.merge_overlapped_output(r, r_ov)
+            else:
+                output = r
+        else:
+            # merge to 6D tensor
+            if self.overlap:
+                output = torch.cat((disassembled_out, disassembled_ov_out), dim=2)
+            else:
+                output= disassembled_out
+        return output
