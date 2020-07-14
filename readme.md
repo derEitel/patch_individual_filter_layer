@@ -39,5 +39,5 @@ class MyNet(nn.Module):
 ```
 
 The default version of the PIF layer contains only a single Convolution. One can increase the depth of the PIF layer by adding further operations in:
-https://github.com/derEitel/patch_individual_filter_layer/blob/31f5f3736aa99e1dcea1310b8c34f1fced225ea3/pif.py#L79
+https://github.com/derEitel/patch_individual_filter_layer/blob/31f5f3736aa99e1dcea1310b8c34f1fced225ea3/pif.py#L78
 
