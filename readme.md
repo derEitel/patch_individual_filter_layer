@@ -9,6 +9,8 @@ Neuroimaging data, e.g. obtained from magnetic resonance imaging (MRI), is compa
 Convolutional neural networks (CNNs), in contrast, have been specifically designed for highly heterogeneous data, such as natural images, by sliding convolutional filters over different positions in an image. Here, we suggest a new CNN architecture that combines the idea of hierarchical abstraction in neural networks with a prior on the spatial homogeneity of neuroimaging data: Whereas early layers are trained globally using standard convolutional layers, we introduce for higher, more abstract layers patch individual filters (PIF). By learning filters in individual image regions (patches) without sharing weights, PIF layers can learn abstract features faster and with fewer samples. We thoroughly evaluated PIF layers for three different tasks and data sets, namely sex classification on UK Biobank data, Alzheimer's disease detection on ADNI data and multiple sclerosis detection on  private hospital data. We demonstrate that CNNs using PIF layers result in higher accuracies, especially in low sample size settings, and need fewer training epochs for convergence. To the best of our knowledge, this is the first study which introduces a prior on brain MRI for CNN learning.
 
 
+The code for the experiments carried out in the study can be found in the *experiments* directory and give further examples on how to employ the PIF architecture.
+
 **Usage**:
 
 The *pif.py* file contains the Patch Individual Filter layer class which can be incorporated as any other layer type.
@@ -39,4 +41,3 @@ class MyNet(nn.Module):
 The default version of the PIF layer contains only a single Convolution. One can increase the depth of the PIF layer by adding further operations in:
 https://github.com/derEitel/patch_individual_filter_layer/blob/31f5f3736aa99e1dcea1310b8c34f1fced225ea3/pif.py#L79
 
-The code for the experiments carried out in the accompanying study can be found in the experiments directory and give further examples on how to employ the PIF architecture.
