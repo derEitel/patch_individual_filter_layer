@@ -73,7 +73,9 @@ class PatchIndividualFilters3D(Module):
                                                                                               self.patch_shape)
 
             self.num_overlap_patches, self.num_overlap_patches_per_dim = self.calc_overlap_num_patches()
-
+        else:
+            self.num_overlap_patches, self.num_overlap_patches_per_dim = 0, 0
+            
         # initialize for each patch a convolution operation
         for patch in range(self.num_patches):
             self.add_module("conv_{}".format(patch),
@@ -346,7 +348,7 @@ class PatchIndividualFilters3D(Module):
                 input_tensor = torch.narrow(input_tensor, dim_idx + 1, offset[0], offset[1] + tmp_remain) # add remain to ensure it matches the patch size again
         return input_tensor
 
-    def reassemble(self, input6d, bs):
+    def reassemble(self, input6d, bs, tmp_num_patches_per_dim):
         """Reassembles the 6D tensor back to 5D.
 
         Parameters
@@ -355,6 +357,8 @@ class PatchIndividualFilters3D(Module):
             The 6D tensor.
         bs : int
             The batch size.
+        tmp_num_patches_per_dim : list
+            The number of patches per dimension, for the specific case.
 
         Returns
         -------
@@ -366,14 +370,13 @@ class PatchIndividualFilters3D(Module):
 
         # initialize output
         f_out = []
-
         # concat the feature maps of each patch channel back to one single feature map
         for batch in range(bs):
             # select patches
             patches = input6d[batch]
             # loop over dimensions in reversed order
-            for dim_idx, dim_val in reversed(list(enumerate(self.num_patches_per_dim))):
-                patches = self.reassemble_along_axis(patches, dim_idx)
+            for dim_idx, dim_val in reversed(list(enumerate(tmp_num_patches_per_dim))):
+                patches = self.reassemble_along_axis(patches, dim_idx, dim_val)
             # delete now unnecessary patch dimension
             f_out.append(patches.squeeze(0))
         # cat together along batch dimension
@@ -387,7 +390,7 @@ class PatchIndividualFilters3D(Module):
 
         return f_out
 
-    def reassemble_along_axis(self, patch, dim):
+    def reassemble_along_axis(self, patch, dim, tmp_num_patches_per_dim):
         """Reassembles the 5D tensor back to 4D.
 
         Parameters
@@ -396,6 +399,8 @@ class PatchIndividualFilters3D(Module):
             The 5D patch (e.g. no batch dimension).
         dim : int
             The dimension to reassemble.
+        tmp_num_patches_per_dim : list
+            The number of patches per dimension, for the specific case.
 
         Returns
         -------
@@ -409,7 +414,7 @@ class PatchIndividualFilters3D(Module):
         return_tensors = []
 
         # first dimension-value in patch.shape determines the number of "patches"
-        num_of_patches_to_put_together = patch.shape[0] // self.num_patches_per_dim[dim]
+        num_of_patches_to_put_together = patch.shape[0] // tmp_num_patches_per_dim
 
         # go through all "cubes" which belong together
         # if nothing was split in that dimension (==1) we don't need to concatenate anything
@@ -424,7 +429,7 @@ class PatchIndividualFilters3D(Module):
                 # these are as many as the number of tensors created during the split in that dimension
                 select_idx = [start_idx] * self.num_patches_per_dim[dim]
                 # add "offset"
-                select_idx = [m1 + m2 for m1, m2 in zip(select_idx, list(range(0, self.num_patches_per_dim[dim])))]
+                select_idx = [m1 + m2 for m1, m2 in zip(select_idx, list(range(0, tmp_num_patches_per_dim)))]
 
                 # create tensor
                 cuda_check = patch.is_cuda
@@ -443,7 +448,7 @@ class PatchIndividualFilters3D(Module):
                 x = torch.cat(tensors_to_cat_in_dim, dim=dim)
                 return_tensors.append(x)
 
-                start_idx = start_idx + self.num_patches_per_dim[dim]
+                start_idx = start_idx + tmp_num_patches_per_dim
             # stack to 5D again
             return_tensors = torch.stack(return_tensors, dim=0)
             return return_tensors
@@ -510,6 +515,38 @@ class PatchIndividualFilters3D(Module):
                 pad_len_idv.append(pad + remain)
             ov = torch.nn.functional.pad(ov, tuple(pad_len_idv), mode='constant', value=0)
         return torch.cat((og, ov), dim=1)
+    
+    def average_overlapped_output(self, og, ov):
+        """Average the original feature maps with those of the overlapped patches.
+        Averages along the channel dimension, useful for backward pass introspection.
+        Pads with zeros where the overlapped feature map is too small, resulting
+        from the reduced input to the overlapped convolutions.
+
+        Parameters
+        ----------
+        og : torch.Tensor
+            Original feature maps.
+        ov : torch.Tensor
+            Feature maps from the overlapped patches.
+
+        Returns
+        -------
+        torch.Tensor
+            The concatenated 6D tensor of all feature maps.
+        """
+        # average the overlapped output back in with the original
+        if ov.shape[-3:] != og.shape[-3:]:
+            # a smaller overlapped output needs to be padded
+            pad_len = np.flip(np.array(og.shape) - np.array(ov.shape), axis=0)[:3] # pad only the spatial dimensions
+            pad_len_idv = []
+            # pad left and right the same amount unless its uneven
+            for idx, pad in enumerate(pad_len):
+                remain = pad % 2
+                pad = pad // 2
+                pad_len_idv.append(pad)
+                pad_len_idv.append(pad + remain)
+            ov = torch.nn.functional.pad(ov, tuple(pad_len_idv), mode='constant', value=0)
+        return (ov + og) / 2
 
     def forward(self, input_tensor):
         """Forward function of the layer.
