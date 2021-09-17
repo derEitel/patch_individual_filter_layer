@@ -1,24 +1,4 @@
-params_pif = {
-    "model" : ["ModelAPIF", "ModelBPIF"],
-    "batch_size" : [4, 6, 12],
-    "patience" : {
-        "small" : [12, 16],
-        "big" : [8, 12]
-        },
-    "lr" : [1e-4, 5e-5]
-}
-
-params_baseline = {
-    "model" : ["ModelA", "ModelB"],
-    "batch_size" : [4, 6, 12],
-    "patience" : {
-        "small" : [12, 16],
-        "big" : [8, 12]
-        },
-    "lr" : [1e-4, 5e-5]
-}
-
-params_baseline_2 = {
+params = {
     "model" : ["ModelA", "ModelB"],
     "batch_size" : [4, 6, 12],
     "patience" : {

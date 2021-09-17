@@ -27,25 +27,29 @@ class ModelA(nn.Module):
 
     def encode(self, x, print_size=False):
         if print_size:
-            print(x.shape)
+            print("Conv 1 " + str(x.shape))
         x = F.elu(self.Conv_1(x))
+        if print_size:
+            print("Pool 1 " + str(x.shape))
         h = self.dropout(self.pool_1(x))
+        if print_size:
+            print("Conv 2 " + str(h.shape))
         x = F.elu(self.Conv_2(h))
         if print_size:
-            print(x.shape)
+            print("Pool 2 " + str(x.shape))
         h = self.dropout(self.pool_2(x))
+        if print_size:
+            print("Conv 3 " + str(h.shape))
         x = F.elu(self.Conv_3(h))
         if print_size:
-            print(x.shape)
+            print("Conv 4 " + str(x.shape))
         x = F.elu(self.Conv_4(x))
         if print_size:
-            print(x.shape)
+            print("Conv 5 " + str(x.shape))
         x = F.elu(self.Conv_5(x))
         if print_size:
-            print(x.shape)
+            print("Pool 4 " + str(x.shape))
         h = self.dropout(self.pool_4(x))
-        if print_size:
-            print(h.shape)
         
         return h
 
@@ -89,19 +93,25 @@ class ModelAPIF(nn.Module):
 
     def encode(self, x, print_size=False):
         if print_size:
-            print(x.shape)
+            print("Conv 1 " + str(x.shape))
         x = F.elu(self.Conv_1(x))
+        if print_size:
+            print("Pool 1 " + str(x.shape))
         h = self.drop(self.pool_1(x))
+        if print_size:
+            print("Conv 2 " + str(h.shape))
         x = F.elu(self.Conv_2(h))
         if print_size:
-            print(x.shape)
+            print("Pool 2 " + str(x.shape))
         h = self.drop(self.pool_2(x))
+        if print_size:
+            print("Conv 3 " + str(h.shape))
         x = F.elu(self.Conv_3(h))
         if print_size:
-            print(x.shape)
+            print("Conv 4 " + str(x.shape))
         x = F.elu(self.Conv_4(x))
         if print_size:
-            print(x.shape)    
+            print("PIF " + str(x.shape))
         h = F.elu(self.pif(x))
     
         return h
@@ -139,25 +149,29 @@ class ModelB(nn.Module):
 
     def encode(self, x, print_size=False):
         if print_size:
-            print(x.shape)
+            print("Conv 1 " + str(x.shape))
         x = F.elu(self.Conv_1(x))
+        if print_size:
+            print("Pool 1 " + str(x.shape))
         h = self.dropout(self.pool_1(x))
+        if print_size:
+            print("Conv 2 " + str(h.shape))
         x = F.elu(self.Conv_2(h))
         if print_size:
-            print(x.shape)
+            print("Pool 2 " + str(x.shape))
         h = self.dropout(self.pool_2(x))
+        if print_size:
+            print("Conv 3 " + str(h.shape))
         x = F.elu(self.Conv_3(h))
         if print_size:
-            print(x.shape)
+            print("Conv 4 " + str(x.shape))
         x = F.elu(self.Conv_4(x))
         if print_size:
-            print(x.shape)
+            print("Conv 5 " + str(x.shape))
         x = F.elu(self.Conv_5(x))
         if print_size:
-            print(x.shape)
+            print("Pool 4 " + str(x.shape))
         h = self.dropout(self.pool_4(x))
-        if print_size:
-            print(h.shape)
         
         return h
 
@@ -201,19 +215,25 @@ class ModelBPIF(nn.Module):
 
     def encode(self, x, print_size=False):
         if print_size:
-            print(x.shape)
+            print("Conv 1 " + str(x.shape))
         x = F.elu(self.Conv_1(x))
+        if print_size:
+            print("Pool 1 " + str(x.shape))
         h = self.drop(self.pool_1(x))
+        if print_size:
+            print("Conv 2 " + str(h.shape))
         x = F.elu(self.Conv_2(h))
         if print_size:
-            print(x.shape)
+            print("Pool 2 " + str(x.shape))
         h = self.drop(self.pool_2(x))
+        if print_size:
+            print("Conv 3 " + str(x.shape))
         x = F.elu(self.Conv_3(h))
         if print_size:
-            print(x.shape)
+            print("Conv 4 " + str(x.shape))
         x = F.elu(self.Conv_4(x))
         if print_size:
-            print(x.shape)    
+            print("PIF " + str(x.shape))
         h = F.elu(self.pif(x))
     
         return h
