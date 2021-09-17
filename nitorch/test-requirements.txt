@@ -1,0 +1,11 @@
+numpy
+matplotlib
+pandas
+sklearn
+scipy
+nibabel
+nilearn
+h5py
+tabulate
+tqdm
+torchvision
